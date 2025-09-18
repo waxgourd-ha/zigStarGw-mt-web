@@ -76,7 +76,7 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ${{ env.IS_VERSION == 'true' && format('ghcr.io/{0}-{1}:{2},ghcr.io/{0}-{1}', format('{0}', github.repository) | downcase, (matrix.platform == 'linux/arm64' && 'aarch64' || 'amd64'), env.VERSION) || format('ghcr.io/{0}', format('{0}', github.repository) | downcase) }}
+            ${{ env.IS_VERSION == 'true' && format('ghcr.io/waxgourd-ha/zigstargw-mt-web-{0}:{1},ghcr.io/waxgourd-ha/zigstargw-mt-web-{0}', (matrix.platform == 'linux/arm64' && 'aarch64' || 'amd64'), env.VERSION) || 'ghcr.io/waxgourd-ha/zigstargw-mt-web' }}
           platforms: ${{ matrix.platform }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
