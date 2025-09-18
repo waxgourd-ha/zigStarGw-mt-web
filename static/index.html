@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>固件烧录工具</title>
+    <script src="./static/js/tailwind.min.js"></script>
+    <script src="./static/js/i18next.min.js"></script>
+    <script src="./static/js/i18nextBrowserLanguageDetector.min.js"></script>
+    <link href="./static/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Tailwind配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        dark: '#1e293b',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .scrollbar-thin {
+                scrollbar-width: thin;
+            }
+            .scrollbar-thin::-webkit-scrollbar {
+                width: 6px;
+            }
+            .scrollbar-thin::-webkit-scrollbar-thumb {
+                background: rgba(156, 163, 175, 0.5);
+                border-radius: 3px;
+            }
+            .progress-animate {
+                transition: width 500ms ease-in-out;
+            }
+            .config-row {
+                @apply flex items-center justify-between mb-4 last:mb-0;
+            }
+            .config-label {
+                @apply text-sm text-gray-600 w-20;
+            }
+            .config-control {
+                @apply flex-1 mr-3;
+            }
+            .btn {
+                @apply w-full py-2.5 rounded-lg transition flex items-center justify-center text-sm;
+            }
+            .btn-primary {
+                @apply bg-primary text-white hover:bg-primary/90;
+            }
+            .btn-danger {
+                @apply bg-danger text-white hover:bg-danger/90;
+            }
+            .btn-secondary {
+                @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen font-sans">
+    <!-- 顶部导航 -->
+    <header class="bg-white shadow-sm py-3">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <i class="fa fa-microchip text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-dark" data-i18n="title"></h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <select id="languageSelect" class="text-sm p-1 border border-gray-300 rounded">
+                    <option value="zh">中文</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="container mx-auto px-4 py-4">
+        <div class="grid grid-cols-1 lg:grid-cols-6 gap-4 h-[calc(100vh-7rem)]">
+            <!-- 左侧：配置与控制区（更高，按钮竖排） -->
+            <div class="lg:col-span-2 space-y-4">
+                <div class="bg-white rounded-xl shadow p-4 h-full flex flex-col">
+                    <h2 class="text-lg font-semibold flex items-center mb-5">
+                        <i class="fa fa-cogs text-primary mr-2"></i><span data-i18n="flash_config"></span>
+                    </h2>
+                    
+                    <!-- 端口配置行 -->
+                    <div class="config-row">
+                        <label class="config-label" data-i18n="port"></label>
+                        <div class="config-control">
+                            <select id="portSelect" class="w-full p-2 border border-gray-300 rounded-lg text-sm">
+                                <!-- 动态填充端口 -->
+                            </select>
+                        </div>
+                        <span id="portStatus" class="px-2 py-1 text-xs   whitespace-nowrap">
+                        </span>
+                    </div>
+
+                    <!-- 固件配置行 -->
+                    <div class="config-row">
+                        <label class="config-label" data-i18n="firmware"></label>
+                        <div class="config-control">
+                            <div class="flex">
+                                <select id="firmwareSelect" class="w-full p-2 border border-gray-300 rounded-l-lg text-sm bg-gray-50 truncate">
+                                    <option value="" data-i18n="select_firmware"></option>
+                                    <!-- 动态填充固件列表 -->
+                                </select>
+                                <button id="manageFirmwareBtn" class="px-2 border border-gray-300 border-l-0 rounded-r-lg bg-gray-100 hover:bg-gray-200 transition">
+                                    <i class="fa fa-cog text-gray-600"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <span id="firmwareStatus" class="px-2 py-1 text-xs  whitespace-nowrap">
+
+                        </span>
+                    </div>
+
+                    
+                    <!-- 固件信息（选中后显示） -->
+                    <div id="firmwareInfo" class="mt-4 p-2 bg-gray-50 rounded text-sm hidden">
+                        <div class="flex justify-between">
+                            <span id="firmwareName" class="truncate"></span>
+                            <span id="firmwareSize" class="text-gray-500"></span>
+                        </div>
+                    </div>
+   
+                    <!-- 拖拽上传区域 -->
+                    <div id="firmwareDropzone" class="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-all duration-300">
+                        <input id="firmwareFile" type="file" accept=".bin,.hex" class="hidden">
+                        <i class="fa fa-upload text-gray-400 text-2xl mb-2"></i>
+                        <p class="text-sm text-gray-500" data-i18n="upload_firmware_tip"></p>
+                        <p class="text-xs text-gray-400 mt-1" data-i18n="upload_config_tip"></p>
+                    </div>
+
+
+                    <!-- 按钮组（竖排） -->
+                    <div class="flex flex-col gap-3 mt-6 flex-grow">
+                        <button id="checkPortBtn" class="btn btn-secondary">
+                            <i class="fa fa-search mr-1"></i><span data-i18n="check_port"></span>
+                        </button>
+                        <button id="startFlashBtn" class="btn btn-primary" disabled>
+                            <i class="fa fa-play mr-1"></i></i><span data-i18n="start_flash"></span>
+                        </button>
+                        <button id="stopFlashBtn" class="btn btn-danger hidden">
+                            <i class="fa fa-stop mr-1"></i><span data-i18n="stop_flash"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：日志与进度区 -->
+            <div class="lg:col-span-4 space-y-4 flex flex-col">
+                <!-- 烧录进度卡片 -->
+                <div class="bg-white rounded-xl shadow p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold flex items-center">
+                            <i class="fa fa-tachometer text-primary mr-2"></i><span data-i18n="flash_progress"></span>
+                        </h2>
+                        <span id="progressPercent" class="text-xl font-bold text-primary">0%</span>
+                    </div>
+                    <!-- 进度条 -->
+                    <div class="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div id="progressBar" class="h-full bg-primary progress-animate" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- 日志显示卡片（占满剩余空间） -->
+                <div class="bg-white rounded-xl shadow overflow-hidden flex-grow flex flex-col">
+                    <div class="bg-dark text-white p-3 flex justify-between items-center">
+                        <h2 class="font-semibold flex items-center text-sm md:text-base">
+                            <i class="fa fa-terminal mr-2"></i><span data-i18n="log"></span>
+                        </h2>
+                        <button id="clearLogBtn" class="text-gray-300 hover:text-white text-sm transition">
+                            <i class="fa fa-trash-o mr-1"></i><span data-i18n="clear"></span>
+                        </button>
+                    </div>
+                    <!-- 日志内容区 -->
+                     
+                    <div id="logArea" style="height: 16rem;" class=" overflow-y-auto p-3 bg-gray-900 text-gray-300 font-mono text-sm scrollbar-thin">
+                        <div class="text-gray-500" data-i18n="log_tip"></div>
+                    </div>
+                </div>
+
+                <!-- 结果显示卡片 -->
+                <div id="resultCard" class="bg-white rounded-xl shadow p-4 hidden">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 id="resultTitle" class="text-lg font-semibold flex items-center">
+                            <i class="fa fa-check-circle text-success mr-2"></i><span data-i18n="success"></span>
+                        </h2>
+                        <span id="resultTime" class="text-sm text-gray-500"></span>
+                    </div>
+                    <!-- 结果详情 -->
+                    <div id="resultDetails" class="text-sm space-y-1">
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 固件管理模态框 -->
+    <div id="firmwareModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="font-semibold text-lg" data-i18n="firmware_manage"></h3>
+                <button id="closeModalBtn" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-4 flex-1 overflow-y-auto scrollbar-thin">
+                <div id="firmwareItems" class="space-y-2">
+                    <!-- 动态填充固件列表 -->
+                    <div class="text-sm text-gray-400 italic" data-i18n="loading"></div>
+                </div>
+            </div>
+            <div class="p-4 border-t flex justify-end">
+                <button id="closeModalBtn2" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition" data-i18n="close">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 前端交互逻辑 -->
+    <script>
+    // 基础配置
+    const API_BASE_URL = './api';
+    let firmwareId = null;         // 上传后的固件ID
+    let currentTaskId = null;      // 烧录任务ID
+    let isFlashing = false;        // 烧录状态标记
+    let pollInterval = null;       // 轮询定时器
+    let langSet = "zh"               // 当前使用的语言
+ 
+    // DOM元素获取
+    const i18n = i18next.createInstance();
+    const checkPortBtn = document.getElementById('checkPortBtn');
+    const portStatus = document.getElementById('portStatus');
+    const portSelect = document.getElementById('portSelect');
+    const firmwareFile = document.getElementById('firmwareFile');
+    const firmwareUploadBtn = document.getElementById('firmwareUploadBtn');
+    const manageFirmwareBtn = document.getElementById('manageFirmwareBtn');
+    const firmwareStatus = document.getElementById('firmwareStatus');
+    const firmwareInfo = document.getElementById('firmwareInfo');
+    const firmwareName = document.getElementById('firmwareName');
+    const firmwareSize = document.getElementById('firmwareSize');
+    const startFlashBtn = document.getElementById('startFlashBtn');
+    const stopFlashBtn = document.getElementById('stopFlashBtn');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const logArea = document.getElementById('logArea');
+    const clearLogBtn = document.getElementById('clearLogBtn');
+    const resultCard = document.getElementById('resultCard');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultTime = document.getElementById('resultTime');
+    const resultDetails = document.getElementById('resultDetails');
+    const firmwareItems = document.getElementById('firmwareItems');
+    const firmwareModal = document.getElementById('firmwareModal');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const closeModalBtn2 = document.getElementById('closeModalBtn2');
+    const firmwareDropzone = document.getElementById('firmwareDropzone');
+    const firmwareSelect = document.getElementById('firmwareSelect');
+
+    // 页面初始化
+    document.addEventListener('DOMContentLoaded', () => {
+
+        loadTranslations().then(translations => {
+            return i18n.init({
+                resources: translations,
+                lng: localStorage.getItem('preferredLanguage') || 'zh',
+                fallbackLng: 'en',
+                interpolation: {
+                    escapeValue: false
+                }
+            });
+        }).then(() => {
+            initLanguageSelector();
+            updateUI();
+            
+            // 监听语言变化事件
+            i18n.on('languageChanged', updateUI);
+            setupEventListeners();
+            checkPorts();
+            // checkBaudRate();
+            loadFirmwareList();
+        });
+
+
+    });
+
+    async function loadTranslations() {
+        const [enRes, zhRes] = await Promise.all([
+            fetch('./static/locales/en.json'),
+            fetch('./static/locales/zh.json')
+        ]);
+        return {
+            en: await enRes.json(),
+            zh: await zhRes.json()
+        };
+    }
+
+    function updateUI() {
+        document.querySelectorAll('[data-i18n]').forEach(function (element) {
+            const key = element.getAttribute('data-i18n');
+            element.textContent = i18n.t(key);
+        });
+    }
+
+    function initLanguageSelector() {
+        const langSelect = document.getElementById('languageSelect');
+        if (langSelect) {
+            // 从存储获取设置的语言，如果没有默认zh
+            const preferredLang = localStorage.getItem('preferredLanguage') || 'zh';
+            langSet = preferredLang;
+            langSelect.value = preferredLang;
+
+            // 监听语言选择变化
+            langSelect.addEventListener('change', function () {
+                const lang = this.value;
+                localStorage.setItem('preferredLanguage', lang);
+                i18n.changeLanguage(lang).then(updateUI);
+            });
+        }
+    }
+
+    // 事件监听
+    function setupEventListeners() {
+        // 端口相关
+        checkPortBtn.addEventListener('click', checkPorts);
+        portSelect.addEventListener('change', checkFlashReady);
+        
+        // 固件上传相关
+        firmwareDropzone.addEventListener('click', () => firmwareFile.click());
+        firmwareFile.addEventListener('change', handleFirmwareUpload);
+        firmwareDropzone.addEventListener('dragover', (e) => { 
+            e.preventDefault(); 
+            firmwareDropzone.classList.add('border-primary', 'bg-primary/5'); 
+        });
+        firmwareDropzone.addEventListener('dragleave', () => { 
+            firmwareDropzone.classList.remove('border-primary', 'bg-primary/5'); 
+        });
+        firmwareDropzone.addEventListener('drop', (e) => { 
+            e.preventDefault(); 
+            firmwareDropzone.classList.remove('border-primary', 'bg-primary/5'); 
+            if (e.dataTransfer.files.length) { 
+                firmwareFile.files = e.dataTransfer.files; 
+                handleFirmwareUpload(); 
+            } 
+        });
+        firmwareSelect.addEventListener('change', checkFirmwareSelect);
+        // 固件管理模态框
+        manageFirmwareBtn.addEventListener('click', openFirmwareModal);
+        closeModalBtn.addEventListener('click', closeFirmwareModal);
+        closeModalBtn2.addEventListener('click', closeFirmwareModal);
+        firmwareModal.addEventListener('click', (e) => {
+            if (e.target === firmwareModal) closeFirmwareModal();
+        });
+        
+        // 烧录控制
+        startFlashBtn.addEventListener('click', startFlashing);
+        stopFlashBtn.addEventListener('click', stopFlashing);
+        
+        // 日志控制
+        clearLogBtn.addEventListener('click', clearLog);
+    }
+
+    function handleApiResponse(code, info="") {
+        // 根据code显示不同翻译
+        msg = ''
+        switch(code) {
+            case 1000:
+                break;
+            case 1001:
+                msg = i18n.t('firmware_not_exist');
+                break;
+            case 1002:
+                msg = i18n.t('delete_firmware_error');
+                break;
+            case 1003:
+                msg = i18n.t('set_default_firmware_error');
+                break;
+            case 1004:
+                msg = i18n.t('set_default_firmware_error');
+                break;
+            case 1005:
+                msg = i18n.t('task_not_exist');
+                break;
+            case 1006:
+                msg = i18n.t('interface_error');
+                break;
+            case 1007:
+                msg = i18n.t('firmware_file_not_exist');
+                break;
+            case 1008:
+                msg = i18n.t('flash_shell_not_exist');
+                break;
+            case 1009:
+                msg = i18n.t('start_flash')+ "...";
+                break;
+            case 1010:
+                msg = i18n.t('stop_flash_success_tip');
+                break;
+            case 1011:
+                msg = i18n.t('flash_progress')+ ": " + info + "%";
+                break;
+            case 1012:
+                msg = i18n.t('flash_error_code') + info;
+                break;
+            case 1013:
+                msg = i18n.t('flash_error_code_1013')+ info;
+                break;
+            case 1014:
+                msg = i18n.t('flash_error_code_1014')+ info;
+                break;
+            case 1015:
+                msg = i18n.t('flash_error_code_1015')+ info;
+                break;
+            case 1016:
+                msg = i18n.t('flash_code_1016')+ info;
+                break;
+            case 1017:
+                msg = info;
+                break;
+            default:
+                break;
+        }
+        return msg;
+    }
+
+    // 固件管理模态框控制
+    function openFirmwareModal() {
+        loadFirmwareList();
+        firmwareModal.classList.remove('hidden');
+    }
+
+    function closeFirmwareModal() {
+        firmwareModal.classList.add('hidden');
+    }
+
+
+    async function loadFirmwareList() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/firmware/list`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            const data = await response.json();
+            
+            if (data.firmwares.length > 0) {
+                // 添加固件选项
+                formatFirmwareInfo(data)
+            } else {
+                firmwareItems.innerHTML = '<div class="text-sm text-gray-400 italic" data-i18n="no_firmware_tip"></div>';
+            }
+        } catch (error) {
+            firmwareItems.innerHTML = `<div class="text-sm text-danger" "><span data-i18n="load_firmware_error"></span> </div>`;
+        }
+        updateUI();
+    }
+
+    function formatFirmwareInfo(data) {
+            // 完全清空下拉框并重新添加提示选项
+            firmwareSelect.innerHTML = '';
+            const defaultOption = document.createElement('option');
+            defaultOption.value = "";
+            defaultOption.innerHTML = `<span data-i18n="select_firmware"></span>`;
+            firmwareSelect.appendChild(defaultOption);
+            data.firmwares.forEach(firmware => {
+                const option = document.createElement('option');
+                option.value = firmware.id;
+                option.textContent = firmware.filename;
+                option.size = firmware.size;
+                if (firmware.is_default) {
+                    option.selected = true;
+                }
+                firmwareSelect.appendChild(option);
+            });
+
+
+            firmwareItems.innerHTML = '';
+            data.firmwares.forEach(firmware => {
+                const item = document.createElement('div');
+                item.className = `flex justify-between items-center p-2.5 rounded-lg ${firmware.is_default ? 'bg-primary/10 border border-primary/20' : 'hover:bg-gray-50'}`;
+
+                item.innerHTML = `
+                        <div class="flex items-center">
+                            <span class="text-sm ${firmware.is_default ? 'text-primary font-medium' : ''}">${firmware.filename}</span>
+                            ${firmware.is_default ? '<span class="ml-2 px-1.5 py-0.5 text-xs bg-primary text-white rounded" data-i18n="default"></span>' : ''}
+                        </div>
+                        <div class="flex space-x-1">
+                            ${!firmware.is_default ? `<button class="set-default-btn text-xs px-2 py-1 bg-gray-200 rounded hover:bg-primary/20 hover:text-primary" data-id="${firmware.id}" data-i18n="set_default"></button>` : ''}
+                            <button class="delete-firmware-btn text-xs px-2 py-1 bg-gray-200 rounded hover:bg-red-200 hover:text-red-600" data-id="${firmware.id}"><i class="fa fa-trash-o fa-lg mr-1"></i></button>
+                            
+                        </div>
+                    `;
+                firmwareItems.appendChild(item);
+            });
+
+            document.querySelectorAll('.delete-firmware-btn').forEach(btn => {
+                btn.addEventListener('click', () => deleteFirmware(btn.dataset.id));
+            });
+
+            document.querySelectorAll('.set-default-btn').forEach(btn => {
+                btn.addEventListener('click', () => setDefaultFirmware(btn.dataset.id));
+            });
+            // 自动选择默认固件
+            if (data.default_id) {
+                selectFirmware(data.default_id);
+            }
+            checkFlashReady();
+    }
+
+    // 选择固件函数
+    async function selectFirmware(fid) {
+        try {
+            
+            // 更新UI
+            firmwareId = fid;
+            // 获取select中对应的option
+            const selectedOption = firmwareSelect.options[firmwareSelect.selectedIndex];
+            if (!selectedOption || selectedOption.value === "") {
+                checkFirmwareSelect();
+                addLog(i18n.t('not_select_firmware'), 'error')
+                return;
+            }
+            checkFirmwareSelect();
+            checkFlashReady();
+        } catch (error) {
+            addLog(i18n.t('select_firmware_error') + `${error.message}`, 'error');
+        }
+    }
+
+    // 删除固件函数
+    async function deleteFirmware(fid) {
+        if (!confirm(i18n.t('confirm_delete_firmware'))) return;
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/firmware/delete/${fid}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            addLog(i18n.t('delete_firmware_success'), 'success')
+            loadFirmwareList();
+
+            // 如果删除的是当前选中的固件，重置状态
+            if (firmwareId === fid) {
+                firmwareId = null;
+                // firmwareInfo.classList.add('hidden');
+                firmwareStatus.innerHTML = '<div class="text-sm text-gray-400 italic" data-i18n="not_select"></div>';
+                firmwareStatus.className = 'px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-500';
+                checkFlashReady();
+            }
+        } catch (error) {
+            addLog(i18n.t('delete_firmware_error'), 'error')
+        }
+    }
+
+    // 设置默认固件
+    async function setDefaultFirmware(fid) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/firmware/default/${fid}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            addLog(i18n.t('set_default_firmware_end'), 'success')
+            loadFirmwareList();
+        } catch (error) {
+            addLog(i18n.t('set_default_firmware_error'), 'error')
+        }
+    }
+
+    // 端口检查
+    async function checkPorts() {
+        try {
+            checkPortBtn.disabled = true;
+            portStatus.innerHTML = '<i class="fa fa-spinner fa-spin fa-lg mr-1"></i>';
+            addLog(i18n.t('start_check_port_tip'))
+
+            const response = await fetch(`${API_BASE_URL}/ports`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            const data = await response.json();
+
+            portSelect.innerHTML = '';
+            if (data.ports.length > 0) {
+                data.ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port.name;
+                    if (port.description) {
+                        option.textContent = `${port.name}（${port.description}）`;
+                    }else{
+                        option.textContent = `${port.name}`;
+                    }
+                    portSelect.appendChild(option);
+                });
+                portStatus.innerHTML ='<i class="fa fa-check-circle text-success fa-lg mr-2"></i>';
+                addLog(`${data.ports.length} ${i18n.t('port_count_tip')}`);
+            } else {
+                portStatus.innerHTML ='<i class="fa fa-times-circle text-danger fa-lg mr-2"></i>';
+                addLog(i18n.t('no_port_tip', 'warning'));
+            }
+        } catch (error) {
+            portStatus.innerHTML ='<i class="fa fa-times-circle text-danger fa-lg mr-2"></i>';
+            addLog(i18n.t('port_check_failed_tip') + `${error.message}`, 'error');
+        } finally {
+            checkPortBtn.disabled = false;
+            // checkPortBtn.innerHTML = '<i class="fa fa-search mr-1"></i>检查端口';
+            checkFlashReady();
+        }
+    }
+
+    // 处理固件上传
+    async function handleFirmwareUpload() {
+        const file = firmwareFile.files[0];
+        if (!file) return;
+
+        // 验证文件格式和大小
+        const allowedExt = ['bin', 'hex'];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        const maxSize = 10 * 1024 * 1024;  // 10MB
+
+        if (!allowedExt.includes(fileExt)) {
+            addLog(i18n.t('unsupported_format_tip') + `.${fileExt}，${i18n.t('only_support_tip')}`, 'error');
+            firmwareFile.value = '';
+            return;
+        }
+        
+        if (file.size > maxSize) {
+            addLog(i18n.t('file_size_exceeded_tip') + `${formatFileSize(file.size)}，${i18n.t('max_file_size_tip')}`, 'error');
+            firmwareFile.value = '';
+            return;
+        }
+
+        try {
+            addLog(i18n.t('start_upload_firmware_tip') + `${file.name}`);
+
+            const formData = new FormData();
+            formData.append('firmware', file);
+
+            const response = await fetch(`${API_BASE_URL}/firmware/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            const data = await response.json();
+
+            firmwareId = data.firmware_id;
+
+            firmwareStatus.innerHTML ='<i class="fa fa-check-circle text-success fa-lg mr-2"></i>';
+            addLog(i18n.t('upload_firmware_success_tip') + `${file.name}（${formatFileSize(file.size)}）`, 'success');
+            loadFirmwareList();
+
+        } catch (error) {
+            addLog(i18n.t('upload_firmware_failed_tip') + `${error.message}`, 'error');
+        } finally {
+            checkFlashReady();
+        }
+    }
+
+
+    function checkFirmwareSelect() {
+        const selectedOption = firmwareSelect.options[firmwareSelect.selectedIndex];
+
+        if (!selectedOption || selectedOption.value === "") {
+            addLog(i18n.t('not_select_firmware'), 'error')
+            firmwareStatus.innerHTML ='<i class="fa fa-times-circle text-danger fa-lg mr-2"></i>';
+            return;
+        }else{
+
+            addLog(i18n.t('selected_firmware_tip') + selectedOption.textContent, 'info');
+            firmwareStatus.innerHTML ='<i class="fa fa-check-circle text-success fa-lg mr-2"></i>';
+        }
+    }
+
+    // 检查烧录是否就绪
+    function checkFlashReady() {
+        const portReady = portSelect.value !== '';
+        const firmwareReady = firmwareId !== null;
+
+         // 根据状态更新开始按钮
+        if (portReady && firmwareReady && !isFlashing) {
+            startFlashBtn.disabled = false;
+            startFlashBtn.className = 'btn btn-primary';
+
+        } else {
+            startFlashBtn.disabled = true;
+            startFlashBtn.className = 'btn btn-primary opacity-50 cursor-not-allowed';
+
+        }
+    }
+
+    // 开始烧录
+    async function startFlashing() {
+        if (isFlashing) return;
+
+        const port = portSelect.value;
+
+        try {
+            isFlashing = true;
+            startFlashBtn.classList.add('hidden');
+            stopFlashBtn.classList.remove('hidden');
+
+            resultCard.classList.add('hidden');
+            progressBar.style.width = '0%';
+            progressPercent.textContent = '0%';
+
+            selectedOption = firmwareSelect.options[firmwareSelect.selectedIndex];
+            addLog('=====================================');
+            addLog(i18n.t('info_start_flash_flow_tip'), 'progress');
+            addLog(i18n.t('target_port_tip') + `${port}`, 'progress');
+            addLog(i18n.t('firmware') + `: ${selectedOption.textContent}`, 'progress');
+            addLog('=====================================');
+
+            const response = await fetch(`${API_BASE_URL}/flash/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    port: port,
+                    firmware_id: selectedOption.value
+                })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            const data = await response.json();
+            currentTaskId = data.task_id;
+            addLog(i18n.t('start_flash_tip') + ", ID: " + `${currentTaskId}`, 'success');
+
+            startPolling(currentTaskId);
+
+        } catch (error) {
+            addLog(i18n.t('start_flash_failed_tip'), 'error');
+            isFlashing = false;
+            startFlashBtn.classList.remove('hidden');
+            stopFlashBtn.classList.add('hidden');
+
+            checkFlashReady();
+        }
+    }
+
+    // 停止烧录
+    async function stopFlashing() {
+        if (!isFlashing || !currentTaskId) return;
+
+        try {
+            addLog(i18n.t('stop_flash_tip'), 'warning');
+
+            const response = await fetch(`${API_BASE_URL}/flash/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_id: currentTaskId })
+            });
+
+            if (!response.ok) throw new Error(`HTTP ERROR：${response.status}`);
+            addLog(i18n.t('stop_flash_success_tip'), 'warning');
+            stopPolling();
+
+        } catch (error) {
+            addLog(i18n.t('stop_flash_failed_tip'), 'error');
+        } finally {
+            isFlashing = false;
+            startFlashBtn.classList.remove('hidden');
+            stopFlashBtn.classList.add('hidden');
+
+            checkFlashReady();
+        }
+    }
+
+    // 进度轮询函数
+    async function startPolling(taskId) {
+        if (pollInterval) clearInterval(pollInterval);
+
+        let errorCount = 0;
+        const maxErrors = 10;
+
+        pollInterval = setInterval(async () => {
+            if (errorCount >= maxErrors) {
+                addLog(i18n.t('continuation_tip') + `${maxErrors}${i18n.t('max_errors_tip')}`, 'error');
+                stopPolling();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/flash/progress/${taskId}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 5000
+                });
+
+                if (!response.ok) {
+                    errorCount++;
+                    addLog(i18n.t('progress_query_failed_tip') + `HTTP CODE ${response.status}`, 'error');
+                    return;
+                }
+
+                const data = await response.json();
+                errorCount = 0;
+                if (data.code > 0) {
+                    addLog(handleApiResponse(data.code, data.log.toString()), 'error');
+                }
+                if (data.log && data.log.length > 0) {
+                    data.log.forEach(logItem => {
+                        if (logItem.log_type == "progress") {
+                            addLog(handleApiResponse(1011, logItem.progress.toString()), logItem.log_type);
+                        }else{
+                            if (logItem.log) {
+                                addLog(handleApiResponse(logItem.code, logItem.log.toString()), logItem.log_type);
+                            }
+                        }
+                        
+                    });
+                }
+                if (data.progress !== undefined) {
+                    progressBar.style.width = `${data.progress}%`;
+                    progressPercent.textContent = `${data.progress}%`;
+                }
+
+
+
+                if (data.completed && !data.is_running) {
+                    if (data.success ) {
+                        addLog(i18n.t('flash_complete_tip') + ' ( ' + i18n.t('total_time_tip') +` ${formatTime(data.duration)})`, 'success');
+                    } else { 
+                        addLog(i18n.t('flash_failed_tip') + ' ( ' + i18n.t('total_time_tip') +` ${formatTime(data.duration)})`, 'error');
+                    }
+                    isFlashing = false;
+                    startFlashBtn.classList.remove('hidden');
+                    stopFlashBtn.classList.add('hidden');
+                    showResult(data.success, data);
+                    checkFlashReady();
+                    stopPolling();
+                }
+
+                if (!data.is_running && data.error && data.error.includes('不存在或已结束')) {
+
+                    addLog(i18n.t('flash_stop_tip'), 'warning');
+                    isFlashing = false;
+                    startFlashBtn.classList.remove('hidden');
+                    stopFlashBtn.classList.add('hidden');
+                    stopPolling();
+                }
+
+            } catch (error) {
+                errorCount++;
+                let errorMsg = error.message;
+                if (error.name === 'AbortError') errorMsg = i18n.t('request_timeout_tip');
+                addLog(i18n.t('progress_query_exception_tip'), 'error');
+            }
+        }, 300);
+    }
+
+    // 停止进度轮询
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            if (currentTaskId) {
+                fetch(`${API_BASE_URL}/flash/progress/${currentTaskId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.completed) {
+                            isFlashing = false;
+                            startFlashBtn.classList.remove('hidden');
+                            stopFlashBtn.classList.add('hidden');
+                        }
+                    })
+                    .catch(err => console.log(i18n.t('last_status_check_failed_tip'), err));
+            }
+        }
+    }
+
+    // 日志处理
+    function addLog(message, type = 'info') {
+        const timestamp = new Date().toLocaleTimeString();
+        let textClass = 'text-gray-300';
+
+        switch (type) {
+            case 'success': textClass = 'text-success'; break;
+            case 'warning': textClass = 'text-warning'; break;
+            case 'error': textClass = 'text-danger'; break;
+            case 'progress': textClass = 'text-primary'; break;
+        }
+
+        const logItem = document.createElement('div');
+        logItem.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> <span class="${textClass}">${escapeHtml(message)}</span>`;
+        logArea.appendChild(logItem);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function clearLog() {
+        logArea.innerHTML = '<div class="text-gray-500" data-i18n="log_tip"></div>';
+        updateUI();
+    }
+
+    // 显示烧录结果
+    function showResult(isSuccess, data) {
+        resultTime.textContent = new Date().toLocaleString();
+
+        if (isSuccess) {
+            resultTitle.innerHTML = '<i class="fa fa-check-circle text-success mr-2"></i><span data-i18n="firmware_flash_success_tip"></span>';
+        } else {
+            resultTitle.innerHTML = '<i class="fa fa-times-circle text-danger mr-2"></i><span data-i18n="firmware_flash_failed_tip"></span>';
+        }
+        selectedOption = firmwareSelect.options[firmwareSelect.selectedIndex];
+        resultDetails.innerHTML = `
+            <p><span class="text-gray-500" data-i18n="port_info"></span> ${portSelect.value}</p>
+            <p><span class="text-gray-500" data-i18n="firmwares"></span> ${selectedOption.textContent}</p>
+            <p><span class="text-gray-500" data-i18n="size"></span> ${selectedOption.size}</p>
+            <p><span class="text-gray-500" data-i18n="duration"></span> ${data.duration ? formatTime(data.duration) : 'unknown'}</p>
+        `;
+
+        resultCard.classList.remove('hidden');
+        updateUI();
+    }
+
+    // 工具函数
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+</script>
+</body>
+</html>

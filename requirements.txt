@@ -1,0 +1,9 @@
+intelhex~=2.3.0
+pyserial~=3.5
+python_magic~=0.4.27
+pyserial-asyncio~=0.6
+flask
+flask_cors
+flask-socketio
+python-dotenv
+zeroconf
